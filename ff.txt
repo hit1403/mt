@@ -1,0 +1,128 @@
+/*
+ * GLUT Shapes Demo
+ *
+ * Written by Nigel Stewart November 2003
+ *
+ * This program is test harness for the sphere, cone
+ * and torus shapes in GLUT.
+ *
+ * Spinning wireframe and smooth shaded shapes are
+ * displayed until the ESC or q key is pressed.  The
+ * number of geometry stacks and slices can be adjusted
+ * using the + and - keys.
+ */
+#include<windows.h>
+#ifdef __APPLE__
+#include <GLUT/glut.h>
+#else
+#include <GL/glut.h>
+#endif
+
+#include <stdlib.h>
+
+
+struct point
+{
+    int x;
+    int y;
+}pts[100];
+int i= 0;
+int flag=0;
+static void display(void)
+{
+
+    glColor3d(0,1,0);
+    glBegin(GL_POLYGON);
+        for(int j=0;j<i;j++)
+        {
+            glVertex2f(pts[j].x,pts[j].y);
+        }
+    glEnd();
+    glFlush();
+
+
+}
+void flood_fill(int x,int y, float fillcolor[3], float oldcolor[3])
+{
+    float interiorcolor[3];
+    glReadPixels(x,y,1,1,GL_RGB,GL_FLOAT,interiorcolor);
+    if((interiorcolor[0]==oldcolor[0] && interiorcolor[1]==oldcolor[1] && interiorcolor[2]==oldcolor[2]))
+    {
+        glColor3fv(fillcolor);
+        glBegin(GL_POINTS);
+            glVertex2f(x,y);
+        glEnd();
+        glFlush();
+
+        flood_fill(x,y+1,fillcolor,oldcolor);
+        flood_fill(x+1,y,fillcolor,oldcolor);
+        flood_fill(x,y-1,fillcolor,oldcolor);
+        flood_fill(x-1,y,fillcolor,oldcolor);
+
+        /*
+        flood_fill(x+1,y,fillcolor,oldcolor);
+        flood_fill(x+1,y+1,fillcolor,oldcolor);
+        flood_fill(x,y+1,fillcolor,oldcolor);
+        flood_fill(x-1,y+1,fillcolor,oldcolor);
+        flood_fill(x-1,y,fillcolor,oldcolor);
+        flood_fill(x-1,y-1,fillcolor,oldcolor);
+        flood_fill(x,y-1,fillcolor,oldcolor);
+        flood_fill(x+1,y-1,fillcolor,oldcolor);
+        */
+    }
+
+
+
+}
+void Mouse_hand(int button, int state, int x, int y)
+{
+    if(button==GLUT_LEFT && state==GLUT_DOWN)
+    {
+        if(flag==0)
+        {
+            pts[i].x = x;
+            pts[i].y = 480-y;
+            i+=1;
+        }
+        else if(flag==1)
+        {
+            float fillcolor[] = {1,0,0};
+            float oldcolor[] = {0,1,0};
+            flood_fill(x,480-y,fillcolor,oldcolor);
+        }
+
+    }
+    if(button==GLUT_RIGHT_BUTTON && state==GLUT_DOWN)
+    {
+        display();
+        flag=1;
+    }
+}
+
+
+
+
+/* Program entry point */
+void init()
+{
+    glClearColor(1,1,1,1);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluOrtho2D(0,640,0,480);
+}
+int main(int argc, char *argv[])
+{
+    glutInit(&argc, argv);
+    glutInitWindowSize(640,480);
+    glutInitWindowPosition(10,10);
+    glutInitDisplayMode(GLUT_RGB | GLUT_SINGLE);
+
+    glutCreateWindow("GLUT Shapes");
+    glutDisplayFunc(display);
+    init();
+    glutMouseFunc(Mouse_hand);
+
+    glutMainLoop();
+
+    return EXIT_SUCCESS;
+}
