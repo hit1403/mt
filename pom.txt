@@ -1,0 +1,619 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <omp.h>
+
+#define BUFFER_SIZE 5  // Max size of the buffer
+#define NUM_ITEMS 10   // Total items to produce/consume
+
+int buffer[BUFFER_SIZE]; // Shared buffer
+int count = 0;           // Number of items in buffer
+
+void producer() {
+    for (int i = 1; i <= NUM_ITEMS; i++) {
+        int produced_item = i; // Generate a new item
+
+        // **Wait if buffer is full**
+        while (count == BUFFER_SIZE);
+
+        #pragma omp critical
+        {
+            buffer[count] = produced_item;
+            count++;
+            printf("Produced: %d | Buffer Count: %d\n", produced_item, count);
+        }
+    }
+}
+
+void consumer() {
+    for (int i = 1; i <= NUM_ITEMS; i++) {
+        int consumed_item;
+
+        // **Wait if buffer is empty**
+        while (count == 0);
+
+        #pragma omp critical
+        {
+            consumed_item = buffer[count - 1];
+            count--;
+            printf("Consumed: %d | Buffer Count: %d\n", consumed_item, count);
+        }
+    }
+}
+
+int main() {
+    // **Run producer and consumer in parallel**
+    #pragma omp parallel sections
+    {
+        #pragma omp section
+        producer();
+
+        #pragma omp section
+        consumer();
+    }
+
+    return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////
+
+
+#include <stdio.h>
+#include <omp.h>
+
+void task1() {
+    printf("Task 1: Step A completed by thread %d\n", omp_get_thread_num());
+
+    // **Rendezvous Point: Wait for Task 2**
+    #pragma omp barrier
+
+    printf("Task 1: Step B completed by thread %d\n", omp_get_thread_num());
+}
+
+void task2() {
+    printf("Task 2: Step A completed by thread %d\n", omp_get_thread_num());
+
+    // **Rendezvous Point: Wait for Task 1**
+    #pragma omp barrier
+
+    printf("Task 2: Step B completed by thread %d\n", omp_get_thread_num());
+}
+
+int main() {
+    #pragma omp parallel sections
+    {
+        #pragma omp section
+        task1();
+
+        #pragma omp section
+        task2();
+    }
+    return 0;
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <omp.h>
+
+#define MAX_CHAIRS 5    // Number of waiting chairs
+#define TOTAL_CUSTOMERS 10  // Total customers arriving
+#define HAIRCUT_TIME 2  // Simulated time for a haircut
+
+int waiting_customers = 0;  // Number of customers waiting
+int barber_free = 1;  // 1 if barber is free, 0 if busy
+
+void barber() {
+    while (1) {
+        if (waiting_customers > 0) {
+            #pragma omp critical
+            {
+                waiting_customers--;  // Invite customer from waiting area
+                barber_free = 0;  // Barber is now busy
+                printf("Barber: Inviting a customer. Remaining waiting: %d\n", waiting_customers);
+            }
+            
+            sleep(HAIRCUT_TIME);  // Simulate haircut
+            
+            #pragma omp critical
+            {
+                barber_free = 1;  // Barber is now free
+                printf("Barber: Finished haircut. Next customer?\n");
+            }
+        } else {
+            printf("Barber: Sleeping... No customers.\n");
+            sleep(1);
+        }
+    }
+}
+
+void customer(int id) {
+    #pragma omp critical
+    {
+        if (waiting_customers < MAX_CHAIRS) {
+            waiting_customers++;
+            printf("Customer %d: Waiting in the room. Seats occupied: %d/%d\n", id, waiting_customers, MAX_CHAIRS);
+        } else {
+            printf("Customer %d: Left (No available chairs).\n", id);
+        }
+    }
+
+    while (!barber_free);  // Wait until the barber invites a customer
+    #pragma omp critical
+    {
+        printf("Customer %d: Moving to barber chair.\n", id);
+    }
+    sleep(HAIRCUT_TIME);  // Simulate getting a haircut
+}
+
+int main() {
+    printf("Barber Shop Open!\n");
+
+    #pragma omp parallel sections
+    {
+        #pragma omp section
+        barber();  // Barber runs in a separate section
+
+        #pragma omp section
+        {
+            for (int i = 1; i <= TOTAL_CUSTOMERS; i++) {
+                customer(i);
+                sleep(rand() % 2); // Customers arrive randomly
+            }
+        }
+    }
+
+    return 0;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////
+
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <omp.h>
+
+#define N 5  // Number of philosophers
+
+omp_lock_t forks[N];  // Forks as locks
+
+void think(int id) {
+    printf("Philosopher %d is thinking...\n", id);
+    sleep(rand() % 2); // Simulate thinking
+}
+
+void eat(int id) {
+    printf("Philosopher %d is eating...\n", id);
+    sleep(rand() % 2); // Simulate eating
+}
+
+void philosopher(int id) {
+    while (1) {
+        think(id);  // Thinking before eating
+
+        // **Deadlock Prevention Strategy**
+        if (id % 2 == 0) {  // Even philosophers pick left fork first
+            omp_set_lock(&forks[id]);
+            omp_set_lock(&forks[(id + 1) % N]);
+        } else {  // Odd philosophers pick right fork first
+            omp_set_lock(&forks[(id + 1) % N]);
+            omp_set_lock(&forks[id]);
+        }
+
+        eat(id);  // Eating when both forks are available
+
+        // **Release forks**
+        omp_unset_lock(&forks[id]);
+        omp_unset_lock(&forks[(id + 1) % N]);
+    }
+}
+
+int main() {
+    printf("Dining Philosophers Problem - OpenMP Implementation\n");
+
+    // **Initialize locks for forks**
+    for (int i = 0; i < N; i++) {
+        omp_init_lock(&forks[i]);
+    }
+
+    // **Run philosophers in parallel**
+    #pragma omp parallel for
+    for (int i = 0; i < N; i++) {
+        philosopher(i);
+    }
+
+    return 0;
+}
+
+
+
+/////////////////////////////////////////////////////////////////////////////////
+
+
+
+#include <stdio.h>
+#include <omp.h>
+
+#define N 10  // Array size
+
+int main() {
+    int A[N] = {1,2,3,4,5,6,7,8,9,10};
+    int B[N] = {10,9,8,7,6,5,4,3,2,1};
+    int C[N];
+
+    // Initialize the first value of C sequentially
+    C[0] = A[0] + B[0];
+
+    // Parallel loop with ordering
+    #pragma omp parallel for ordered
+    for (int i = 1; i < N; i++) {
+        #pragma omp ordered
+        {
+            C[i] = A[i] + B[i] + C[i - 1];  // Ensure sequential execution order
+            printf("Thread %d computed C[%d] = %d\n", omp_get_thread_num(), i, C[i]);
+        }
+    }
+
+    // Print final array C
+    printf("\nFinal C Array: ");
+    for (int i = 0; i < N; i++) {
+        printf("%d ", C[i]);
+    }
+    printf("\n");
+
+    return 0;
+}
+
+
+
+///////////////////////////////////////////////////////////////////////////////////
+
+
+
+#include <stdio.h>
+#include <omp.h>
+
+int main() {
+    int sharedVar = 0; // Shared among all threads
+
+    #pragma omp parallel shared(sharedVar)
+    {
+        int privateVar = 0;  // Private to each thread
+        privateVar = omp_get_thread_num();  // Each thread gets its own ID
+
+        // **Updating shared variable in a critical section**
+        #pragma omp critical
+        {
+            sharedVar += privateVar;
+            printf("Thread %d updated sharedVar. New value: %d\n", privateVar, sharedVar);
+        }
+
+        // **Printing each thread's private variable**
+        printf("Thread %d has privateVar = %d\n", privateVar, privateVar);
+    }
+
+    // **Final sharedVar value after all threads modify it**
+    printf("\nFinal value of sharedVar: %d\n", sharedVar);
+    return 0;
+}
+
+
+
+///////////////////////////////////////////////////////////////////////////
+
+
+
+
+#include <stdio.h>
+#include <omp.h>
+
+
+
+void bubble_sort(int arr[], int n)
+{
+	int temp;
+	int swapped = 0;
+	int i = 0; 
+	int j = 0;
+
+	for (i=0; i<n-1; i++)
+	{
+		#pragma omp parallel for private(j, temp) shared(arr) reduction(||:swapped) 
+		for (j=0; j<n-i-1; j++)
+		{
+			if (arr[j] > arr[j+1])
+			{
+				temp = arr[j];
+				arr[j] = arr[j+1];
+				arr[j+1] = temp;
+				swapped = 1;
+			}
+		}
+		
+		if (swapped == 0)
+		{
+			break;
+		}
+	}
+}
+
+
+void merge(int arr[], int left, int mid, int right)
+{
+	int i, j, k;
+	int n1 = mid - left + 1;
+	int n2 = right - mid;
+
+	int L[n1];
+	int R[n2];
+
+	for (i=0; i<n1; i++)
+	{
+		L[i] = arr[left + i];
+	}
+	for (j=0; j<n2; j++)
+	{
+		R[j] = arr[mid + 1 + j];
+	}
+
+	i = 0;
+	j = 0;
+	k = left;
+
+	while (i<n1 && j<n2)
+	{
+		if (L[i] <= R[j])
+		{
+			arr[k] = L[i];
+			i++;
+			k++;
+		}
+		else
+		{
+			arr[k] = R[j];
+			j++;
+			k++;
+		} 
+	}
+	
+	while (i<n1)
+	{
+		arr[k] = L[i];
+		i++;
+		k++;
+	}
+	while (j<n2)
+	{
+		arr[k] = R[j];
+		j++;
+		k++;
+	}
+}
+
+
+void merge_sort(int arr[], int left, int right)
+{
+	if (left < right)
+	{
+		int mid = left + (right - left) / 2;
+		
+		#pragma omp parallel
+		{
+			#pragma omp single nowait
+			{	
+				#pragma omp task
+				merge_sort(arr, left, mid);
+
+				#pragma omp task
+				merge_sort(arr, mid + 1, right);
+			}
+		}
+		
+		#pragma omp taskwait
+		merge(arr, left, mid, right);
+	}
+}
+
+int partition(int arr[], int low, int high)
+{
+	int pivot = arr[high];
+	int i = low - 1;
+
+	for (int j=low; j<high; j++)
+	{
+		if (arr[j] < pivot)
+		{
+			i++;
+			
+			int temp = arr[i];
+			arr[i] = arr[j];
+			arr[j] = temp;
+		}
+	}
+	
+	int temp = arr[i+1];
+	arr[i+1] = arr[high];
+	arr[high] = temp;
+	
+	return i+1;
+}
+
+
+void quick_sort(int arr[], int low, int high)
+{
+	if (low < high)
+	{
+		int pivot = partition(arr, low, high);
+
+		#pragma omp parallel
+		{
+			#pragma omp single nowait
+			{
+				#pragma omp task
+				quick_sort(arr, low, pivot-1);
+
+				#pragma omp task
+				quick_sort(arr, pivot+1, high);
+
+			}
+		}
+		
+		#pragma omp taskwait
+	}
+}
+
+int main()
+{
+	int num_threads = omp_get_num_procs();
+	omp_set_num_threads(num_threads);
+	printf("No of threads available : %d\n", num_threads);
+
+	int n = 0;
+	printf("Enter no of elements in the array: ");
+	scanf("%d", &n);
+
+	int arr[n];
+	printf("Enter %d array elements:\n", n);
+	for (int i=0; i<n; i++)
+	{
+		scanf("%d", &arr[i]);
+	}
+	
+	double start = omp_get_wtime();
+	#pragma omp parallel
+	{	
+		#pragma omp single
+		quick_sort(arr, 0, n-1);
+
+	}
+	double end = omp_get_wtime();
+
+	for (int i=0; i<n; i++)
+	{
+		printf("%d", arr[i]);
+	}
+	
+	printf("\n");		
+	printf("Execution time: %f\n", end-start);
+	return 0;
+}
+
+
+
+/////////////////////////////////////////////////////
+
+
+
+#include <stdio.h>
+#include <omp.h>
+
+int main()
+{
+	int num_threads = omp_get_num_procs();
+	omp_set_num_threads(num_threads);
+	printf("No of available threads : %d\n", num_threads);
+	
+	// MATRIX - MATRIX MULTIPLICATION
+	
+	int r1, c1 = 0;
+	int r2, c2 = 0;
+
+	printf("Enter no of rows and cols in Mat-1 : ");
+	scanf("%d %d", &r1, &c1);
+	
+	// No of rows in mat-2 should be same as no of cols in mat-1
+	r2 = c1;
+
+	printf("\nNo of rows in Mat-2 is %d\n\n", c1);
+	printf("Enter no of cols in Mat-2: ");
+	scanf("%d", &c2);
+
+	int mat1[r1][c1];
+	int mat2[r2][c2];
+	int res[r1][c2];
+	
+	// Initializing result matrix as 0
+	for (int i=0; i<r1; i++)
+	{
+		for (int j=0; j<c2; j++)
+		{
+			res[i][j] = 0;
+		}
+	}
+
+	// Input for Mat-1
+	printf("Enter %d X %d Mat-1 elements\n", r1, c1);
+	for (int i=0; i<r1; i++)
+	{
+		for (int j=0; j<c1; j++)
+		{
+			scanf("%d", &mat1[i][j]); 
+		}
+	}
+
+	// Input for Mat-2
+	printf("Enter %d X %d Mat-2 elements\n", r2, c2);
+	for (int i=0; i<r2; i++)
+	{
+		for (int j=0; j<c2; j++)
+		{
+			scanf("%d", &mat2[i][j]);
+		}
+	}
+
+	
+	// Parallel matrix multiplication
+
+	double start = omp_get_wtime();	
+
+	//#pragma omp parallel for collapse(2)
+	for (int i=0; i<r1; i++)
+	{
+		for (int j=0; j<c2; j++)
+		{
+			for (int k=0; k<c1; k++)
+			{
+				res[i][j] += mat1[i][k] * mat2[k][j];
+			}
+		}
+	}
+
+	double end = omp_get_wtime();
+	printf("\n\nTotal time taken: %f\n", end-start);
+	
+	// Result matrix
+	for (int i=0; i<r1; i++)
+	{
+		for (int j=0; j<c2; j++)
+		{
+			printf("%d ", res[i][j]);
+		}
+	}
+	
+	return 0;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
